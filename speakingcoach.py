@@ -100,10 +100,12 @@ def call_ai_coach(audio_bytes, topic):
        - Did the ideas connect smoothly? 
        - Did they jump between ideas abruptly?
        - **REORGANIZATION**: Suggest how to rearrange the ideas/sentences for a better, more logical flow (Give an outline or re-ordered summary in Vietnamese).
-    3. **NATURALNESS UPGRADE**: 
-       - Find phrases that sound "textbook" or "translated from Vietnamese" (Viet-glish).
-       - Provide the "Native Speaker Version" (Idioms, Collocations, Phrasal verbs) for those specific phrases.
-       - Explain the reason in VIETNAMESE.
+    3. **NATURALNESS UPGRADE (CRITICAL)**: 
+       - Identify specific phrases/sentences that sound "textbook", "awkward", or "translated word-for-word from Vietnamese" (Viet-glish).
+       - **STRICTLY PROVIDE**:
+         - **Original**: The exact phrase user said.
+         - **Better (Native)**: A more natural, idiomatic English alternative (using collocations, phrasal verbs, or native sentence structures).
+         - **Reason**: Explain in VIETNAMESE why the original is unnatural and why the new version is better.
     4. **REPETITION**: List words repeated > 3 times that make the speech boring.
 
     OUTPUT FORMAT: JSON STRICTLY (No markdown blocks).
@@ -250,11 +252,11 @@ with tab_practice:
                 st.session_state['retry_count'] = 0
             st.rerun()
     with c2:
-        if st.button("🔄 Thử Lại (Clear)"):
+        if st.button("🗑️ Xóa & Thử Lại"):
             st.session_state['retry_count'] = st.session_state.get('retry_count', 0) + 1
             st.rerun()
     with c3:
-        st.caption("Bấm 'Thử Lại' để xóa bản ghi âm cũ và nói lại cùng chủ đề này.")
+        st.caption("Bấm 'Xóa & Thử Lại' để xóa bản ghi âm cũ và nói lại cùng chủ đề này.")
 
     # 2. Audio Input (Key động để reset)
     audio_key = f"audio_{st.session_state['topic']}_{st.session_state.get('retry_count', 0)}"
@@ -262,12 +264,30 @@ with tab_practice:
 
     # 3. Xử lý & Phản hồi
     if audio:
-        st.write("---")
-        with st.spinner("🎧 Coach đang phân tích Mạch nói & Tìm từ ngữ tự nhiên..."):
-            audio_bytes = audio.read()
-            result = call_ai_coach(audio_bytes, st.session_state['topic'])
+        # Nút Chấm Lại
+        if st.button("🔄 Chấm Lại (Re-evaluate)"):
+            # Xóa kết quả cũ trong session để trigger chạy lại
+            if f"result_{audio_key}" in st.session_state:
+                del st.session_state[f"result_{audio_key}"]
+            st.rerun()
+
+        # Logic gọi AI (Chỉ gọi khi chưa có kết quả trong Session)
+        result_key = f"result_{audio_key}"
         
-        if result:
+        if result_key not in st.session_state:
+            st.write("---")
+            with st.spinner("🎧 Coach đang phân tích chi tiết (Logic & Naturalness)..."):
+                audio.seek(0)
+                audio_bytes = audio.read()
+                result = call_ai_coach(audio_bytes, st.session_state['topic'])
+                if result:
+                    st.session_state[result_key] = result # Lưu kết quả
+                    st.rerun()
+        
+        # Hiển thị kết quả từ Session
+        if result_key in st.session_state:
+            result = st.session_state[result_key]
+
             # === HIỂN THỊ TRANSCRIPT ===
             with st.expander("📝 Xem Transcript (Những gì bạn vừa nói)", expanded=False):
                 st.write(result.get("transcript", ""))
@@ -294,7 +314,7 @@ with tab_practice:
                     st.markdown(f"""
                     <div class='feedback-card natural-border'>
                         ❌ <b>Bạn nói:</b> "{fix['original']}"<br>
-                        ✅ <b>Người bản xứ nói:</b> <span style='color:#27ae60; font-weight:bold; font-size:18px;'>"{fix['better']}"</span><br>
+                        ✅ <b>Native Speaker nói:</b> <span style='color:#27ae60; font-weight:bold; font-size:18px;'>"{fix['better']}"</span><br>
                         💡 <i>Lý do: {fix['reason']}</i>
                     </div>
                     """, unsafe_allow_html=True)
