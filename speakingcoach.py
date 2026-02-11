@@ -9,7 +9,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
 # ================= CẤU HÌNH GIAO DIỆN =================
-st.set_page_config(page_title="Speaking Flow Coach", page_icon="🌱", layout="centered")
+st.set_page_config(page_title="Speaking Flow Coach", page_icon="🌱", layout="wide")
 
 st.markdown("""
     <style>
@@ -99,11 +99,10 @@ def call_ai_coach(audio_bytes, topic):
     2. **LOGIC & FLOW CHECK**: 
        - Did the ideas connect smoothly? 
        - Did they jump between ideas abruptly?
-       - Suggest a better structure if theirs was confusing.
-       - **LANGUAGE**: VIETNAMESE.
+       - **REORGANIZATION**: Suggest how to rearrange the ideas/sentences for a better, more logical flow (Give an outline or re-ordered summary in Vietnamese).
     3. **NATURALNESS UPGRADE**: 
        - Find phrases that sound "textbook" or "translated from Vietnamese" (Viet-glish).
-       - Provide the "Native Speaker Version" for those specific phrases.
+       - Provide the "Native Speaker Version" (Idioms, Collocations, Phrasal verbs) for those specific phrases.
        - Explain the reason in VIETNAMESE.
     4. **REPETITION**: List words repeated > 3 times that make the speech boring.
 
@@ -113,7 +112,7 @@ def call_ai_coach(audio_bytes, topic):
         "logic_analysis": {{
             "status": "Tốt / Rối rắm / Lan man",
             "comment": "Analysis of the flow in Vietnamese...",
-            "better_structure_suggestion": "Suggestion in Vietnamese..."
+            "better_structure_suggestion": "Suggestion on how to reorganize ideas (Vietnamese)..."
         }},
         "natural_fixes": [
             {{"original": "phrase user said", "better": "native idiom/phrase", "reason": "Explanation in Vietnamese"}}
@@ -203,17 +202,38 @@ def get_journal_history():
 
 st.markdown("<div class='main-header'>🌱 Speaking Flow Coach</div>", unsafe_allow_html=True)
 
-# Quản lý trạng thái Session: Nếu chưa có topic thì gọi AI tạo ngay lập tức
+# -- SIDEBAR: Lịch sử Topic --
+with st.sidebar:
+    st.header("📂 Kho Topic Của Tôi")
+    if st.button("Tải lại lịch sử"):
+        st.cache_data.clear()
+        
+    df_history = get_journal_history()
+    if not df_history.empty:
+        # Lấy danh sách topic unique
+        unique_topics = df_history['Chủ đề (Keyword)'].unique().tolist()
+        selected_old_topic = st.selectbox("Chọn lại topic cũ để luyện:", ["-- Chọn Topic --"] + unique_topics)
+        
+        if selected_old_topic != "-- Chọn Topic --":
+            if st.session_state.get('topic') != selected_old_topic:
+                st.session_state['topic'] = selected_old_topic
+                st.session_state['retry_count'] = 0 # Reset lượt thử
+                st.rerun()
+    else:
+        st.info("Chưa có lịch sử. Hãy luyện tập để lưu topic.")
+
+# Quản lý trạng thái Session
 if 'topic' not in st.session_state: 
     with st.spinner("Đang tìm chủ đề thú vị cho bạn..."):
         st.session_state['topic'] = generate_random_topic_ai()
+        st.session_state['retry_count'] = 0
 
 # TABS
 tab_practice, tab_journal = st.tabs(["🎙️ Luyện Tập", "📓 Nhật Ký Đã Lưu"])
 
 # --- TAB 1: LUYỆN TẬP ---
 with tab_practice:
-    # 1. Random Keyword từ AI
+    # 1. Hiển thị Topic
     st.markdown(f"""
         <div class='topic-card'>
             <div style='font-size: 16px; color: #7f8c8d; margin-bottom: 5px;'>KEYWORD CỦA BẠN</div>
@@ -221,22 +241,29 @@ with tab_practice:
         </div>
     """, unsafe_allow_html=True)
 
-    col_btn1, col_btn2 = st.columns([1, 4])
-    with col_btn1:
-        if st.button("🎲 Đổi từ khóa"):
+    # Nút điều khiển
+    c1, c2, c3 = st.columns([1, 1, 2])
+    with c1:
+        if st.button("🎲 Topic Mới"):
             with st.spinner("Đang nghĩ chủ đề mới..."):
                 st.session_state['topic'] = generate_random_topic_ai()
+                st.session_state['retry_count'] = 0
             st.rerun()
-    with col_btn2:
-        st.info("💡 Mẹo: AI đã chọn ngẫu nhiên chủ đề này. Hãy nói về trải nghiệm cá nhân hoặc quan điểm của bạn trong 1-2 phút.")
+    with c2:
+        if st.button("🔄 Thử Lại (Clear)"):
+            st.session_state['retry_count'] = st.session_state.get('retry_count', 0) + 1
+            st.rerun()
+    with c3:
+        st.caption("Bấm 'Thử Lại' để xóa bản ghi âm cũ và nói lại cùng chủ đề này.")
 
-    # 2. Audio Input
-    audio = st.audio_input("Bấm để bắt đầu nói:", key=f"audio_{st.session_state['topic']}")
+    # 2. Audio Input (Key động để reset)
+    audio_key = f"audio_{st.session_state['topic']}_{st.session_state.get('retry_count', 0)}"
+    audio = st.audio_input("Bấm để bắt đầu nói:", key=audio_key)
 
     # 3. Xử lý & Phản hồi
     if audio:
         st.write("---")
-        with st.spinner("🎧 Coach đang nghe và phân tích (Feedback tiếng Việt)..."):
+        with st.spinner("🎧 Coach đang phân tích Mạch nói & Tìm từ ngữ tự nhiên..."):
             audio_bytes = audio.read()
             result = call_ai_coach(audio_bytes, st.session_state['topic'])
         
@@ -245,7 +272,7 @@ with tab_practice:
             with st.expander("📝 Xem Transcript (Những gì bạn vừa nói)", expanded=False):
                 st.write(result.get("transcript", ""))
 
-            # === PHẦN 1: LOGIC & MẠCH LẠC (QUAN TRỌNG) ===
+            # === PHẦN 1: LOGIC & MẠCH LẠC ===
             st.subheader("1. Tư Duy & Mạch Lạc (Logic Flow)")
             logic = result.get("logic_analysis", {})
             st.markdown(f"""
@@ -253,7 +280,7 @@ with tab_practice:
                 <b>Đánh giá:</b> {logic.get('status', '')}<br><br>
                 💬 <b>Nhận xét:</b> {logic.get('comment', '')}<br>
                 <hr>
-                🚀 <b>Gợi ý cấu trúc tốt hơn:</b><br>
+                🧩 <b>Sắp xếp lại ý tưởng (Để mạch lạc hơn):</b><br>
                 <i>{logic.get('better_structure_suggestion', '')}</i>
             </div>
             """, unsafe_allow_html=True)
@@ -268,20 +295,19 @@ with tab_practice:
                     <div class='feedback-card natural-border'>
                         ❌ <b>Bạn nói:</b> "{fix['original']}"<br>
                         ✅ <b>Người bản xứ nói:</b> <span style='color:#27ae60; font-weight:bold; font-size:18px;'>"{fix['better']}"</span><br>
-                        💡 <i>Tại sao? {fix['reason']}</i>
+                        💡 <i>Lý do: {fix['reason']}</i>
                     </div>
                     """, unsafe_allow_html=True)
             else:
-                st.success("Tuyệt vời! Cách diễn đạt của bạn rất tự nhiên, không bị 'sượng'.")
+                st.success("Tuyệt vời! Cách diễn đạt của bạn rất tự nhiên.")
 
-            # === PHẦN 3: TỪ VỰNG LẶP (VOCABULARY) ===
+            # === PHẦN 3: TỪ VỰNG LẶP ===
             reps = result.get("repetition", [])
             if reps:
-                st.warning(f"⚠️ **Lặp từ:** Bạn dùng các từ sau quá nhiều lần, hãy tìm từ đồng nghĩa thay thế: **{', '.join(reps)}**")
+                st.warning(f"⚠️ **Lặp từ:** Bạn lặp lại các từ này nhiều quá: **{', '.join(reps)}**")
 
             # === LƯU NHẬT KÝ ===
-            # Dùng key hash để tránh lưu trùng khi rerun
-            save_key = f"saved_{len(result.get('transcript', ''))}"
+            save_key = f"saved_{len(result.get('transcript', ''))}_{st.session_state.get('retry_count', 0)}"
             if save_key not in st.session_state:
                 with st.spinner("Đang lưu vào Sheet SPEAKING_JOURNAL..."):
                     saved = save_to_journal(
@@ -298,6 +324,7 @@ with tab_practice:
 with tab_journal:
     st.subheader("📓 Lịch sử luyện tập (Từ Sheet SPEAKING_JOURNAL)")
     if st.button("🔄 Cập nhật danh sách"):
+        st.cache_data.clear()
         st.rerun()
     
     df = get_journal_history()
